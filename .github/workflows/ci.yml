@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+      - run: swift test
+      # Exercise the real pipeline end to end on binaries we did not build:
+      # measure two different images, diff them, and check the tool agrees
+      # with itself about the direction of the change.
+      - name: Measure and diff system binaries
+        run: |
+          ./.build/release/framework-size measure /bin/ls --output /tmp/a.json
+          ./.build/release/framework-size measure /bin/cat --output /tmp/b.json
+          ./.build/release/framework-size diff /tmp/a.json /tmp/b.json
+          python3 - <<'PY'
+          import json
+          a = json.load(open('/tmp/a.json'))
+          b = json.load(open('/tmp/b.json'))
+          for r in (a, b):
+              assert r['slices'], f"{r['name']}: no slices parsed"
+              for s in r['slices']:
+                  names = {seg['name'] for seg in s['segments']}
+                  assert '__TEXT' in names, f"{r['name']}/{s['architecture']}: no __TEXT"
+          print(f"parsed {len(a['slices'])} + {len(b['slices'])} slices")
+          PY

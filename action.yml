@@ -1,0 +1,219 @@
+name: framework-size-report
+description: >-
+  Measure what a framework costs an app, compare it against the base branch,
+  and fail the build when it grows past its budget.
+author: Sentinel Den
+branding:
+  icon: bar-chart-2
+  color: blue
+
+inputs:
+  target:
+    description: "Path to the built .framework, .app, or binary to measure."
+    required: true
+  budget:
+    description: "Absolute ceiling on shipped size, e.g. 2MB. Optional."
+    required: false
+    default: ""
+  tolerance:
+    description: "Maximum growth a single change may add, e.g. 50KB. Optional."
+    required: false
+    default: ""
+  comment:
+    description: >-
+      Post the report as a sticky pull-request comment, updated in place on each
+      push rather than added again. Needs `pull-requests: write`.
+    required: false
+    default: "true"
+  baseline-artifact:
+    description: >-
+      Name of the artifact holding the base-branch measurement. The action
+      uploads its own measurement under this name, so a run on your default
+      branch seeds the baseline for later pull requests.
+    required: false
+    default: "framework-size-baseline"
+  fail-on-regression:
+    description: "Fail the step when over budget or tolerance."
+    required: false
+    default: "true"
+  version:
+    description: "Git ref of framework-size-report to build. Defaults to main."
+    required: false
+    default: "main"
+
+outputs:
+  report:
+    description: "Path to the measurement JSON for this build."
+    value: ${{ steps.measure.outputs.report }}
+  delta-bytes:
+    description: "Change in shipped bytes versus the baseline. Empty when there is no baseline."
+    value: ${{ steps.compare.outputs.delta }}
+  verdict:
+    description: "ok | improved | overBudget | overTolerance | no-baseline"
+    value: ${{ steps.compare.outputs.verdict }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install framework-size
+      shell: bash
+      run: |
+        if command -v framework-size >/dev/null 2>&1; then
+          echo "already on PATH"
+          exit 0
+        fi
+        if command -v brew >/dev/null 2>&1 && brew install sentinelden/tap/framework-size 2>/dev/null; then
+          echo "installed from tap"
+          exit 0
+        fi
+        echo "tap unavailable, building from source"
+        src="$RUNNER_TEMP/framework-size-src"
+        git clone --depth 1 --branch "${{ inputs.version }}" \
+          https://github.com/sentinelden/framework-size-report "$src"
+        swift build -c release --package-path "$src"
+        echo "$src/.build/release" >> "$GITHUB_PATH"
+
+    - name: Measure this build
+      id: measure
+      shell: bash
+      run: |
+        out="$RUNNER_TEMP/framework-size.json"
+        framework-size measure "${{ inputs.target }}" --output "$out"
+        echo "report=$out" >> "$GITHUB_OUTPUT"
+
+    # Pull the baseline recorded by the most recent run on the base branch.
+    # Absent on the first run and on forks without artifact access, which is
+    # handled as "no baseline" rather than as a failure.
+    - name: Download baseline
+      id: baseline
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        base="${{ github.event.pull_request.base.ref }}"
+        dir="$RUNNER_TEMP/baseline"
+        mkdir -p "$dir"
+
+        run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$base" \
+                   --status success --limit 20 --json databaseId \
+                   --jq '.[0].databaseId' 2>/dev/null || true)
+
+        if [ -z "$run_id" ]; then
+          echo "no successful run on $base yet"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+             --name "${{ inputs.baseline-artifact }}" --dir "$dir" 2>/dev/null \
+           && [ -f "$dir/framework-size.json" ]; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "path=$dir/framework-size.json" >> "$GITHUB_OUTPUT"
+        else
+          echo "no baseline artifact on run $run_id"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Compare
+      id: compare
+      shell: bash
+      run: |
+        # Written as if-blocks rather than `[ test ] && cmd`: composite steps
+        # run under `bash -e`, where a false test terminates the whole step.
+        args=()
+        if [ -n "${{ inputs.budget }}" ]; then
+          args+=( --budget "${{ inputs.budget }}" )
+        fi
+        if [ -n "${{ inputs.tolerance }}" ]; then
+          args+=( --tolerance "${{ inputs.tolerance }}" )
+        fi
+
+        if [ "${{ steps.baseline.outputs.found }}" != "true" ]; then
+          echo "verdict=no-baseline" >> "$GITHUB_OUTPUT"
+          echo "delta=" >> "$GITHUB_OUTPUT"
+          # No baseline to diff against, but an absolute budget still applies.
+          if [ -n "${{ inputs.budget }}" ]; then
+            framework-size measure "${{ inputs.target }}" --budget "${{ inputs.budget }}" \
+              || echo "OVER_BUDGET=1" >> "$GITHUB_ENV"
+          fi
+          {
+            echo "**${{ inputs.target }} size report**"
+            echo
+            echo "No baseline measurement found for the base branch yet, so there is"
+            echo "nothing to compare against. This run records one for next time."
+            echo
+            framework-size measure "${{ inputs.target }}" | sed 's/^/    /'
+          } > "$RUNNER_TEMP/report.md"
+          exit 0
+        fi
+
+        set +e
+        framework-size diff "${{ steps.baseline.outputs.path }}" \
+          "${{ steps.measure.outputs.report }}" \
+          "${args[@]}" --format markdown --output "$RUNNER_TEMP/report.md"
+        code=$?
+        framework-size diff "${{ steps.baseline.outputs.path }}" \
+          "${{ steps.measure.outputs.report }}" \
+          "${args[@]}" --format json --output "$RUNNER_TEMP/report.json" >/dev/null
+        set -e
+
+        python3 - <<'PY' >> "$GITHUB_OUTPUT"
+        import json, os
+        d = json.load(open(os.environ["RUNNER_TEMP"] + "/report.json"))
+        print(f"verdict={d['verdict']}")
+        print(f"delta={d['afterBytes'] - d['beforeBytes']}")
+        PY
+
+        if [ "$code" -ne 0 ]; then
+          echo "REGRESSION=1" >> "$GITHUB_ENV"
+        fi
+        exit 0
+
+    # Sticky: one comment per pull request, edited on each push. A new comment
+    # per push buries the conversation, which is how size bots get muted.
+    - name: Comment on the pull request
+      if: github.event_name == 'pull_request' && inputs.comment == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        marker="<!-- framework-size-report -->"
+        body="$marker"$'\n'"$(cat "$RUNNER_TEMP/report.md")"
+        number="${{ github.event.pull_request.number }}"
+
+        existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$number/comments" \
+                     --jq ".[] | select(.body | startswith(\"$marker\")) | .id" \
+                     2>/dev/null | head -1)
+
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" \
+            -f body="$body" >/dev/null
+          echo "updated comment $existing"
+        else
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$number/comments" \
+            -f body="$body" >/dev/null
+          echo "posted a new comment"
+        fi
+
+    # Uploaded on every run, so a merge to the default branch seeds the
+    # baseline that later pull requests compare against.
+    - name: Upload measurement
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.baseline-artifact }}
+        path: ${{ steps.measure.outputs.report }}
+        retention-days: 90
+
+    - name: Enforce
+      shell: bash
+      run: |
+        if [ "${{ inputs.fail-on-regression }}" != "true" ]; then
+          echo "reporting only; not failing the build"
+          exit 0
+        fi
+        if [ -n "${REGRESSION:-}" ] || [ -n "${OVER_BUDGET:-}" ]; then
+          echo "::error::framework-size: ${{ steps.compare.outputs.verdict }}"
+          exit 1
+        fi
+        echo "within limits"
