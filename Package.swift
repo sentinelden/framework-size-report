@@ -1,6 +1,6 @@
 // swift-tools-version: 5.9
 //
-// framework-size — measure what a framework actually costs an app, and fail a
+// framework-size: measure what a framework actually costs an app, and fail a
 // build when it grows past its budget.
 
 import PackageDescription

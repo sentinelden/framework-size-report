@@ -1,4 +1,4 @@
-// Diff.swift — compare two measurements and decide whether to fail the build.
+// Diff.swift: compare two measurements and decide whether to fail the build.
 //
 // The comparison exists to answer one question on a pull request: did this
 // change make the framework bigger, and by enough to care?
@@ -157,7 +157,7 @@ public enum Differ {
             out.append("<details><summary>Breakdown by architecture</summary>")
             out.append("")
             for slice in movedSlices {
-                out.append("**\(slice.architecture)** — \(ByteFormat.delta(slice.delta))")
+                out.append("**\(slice.architecture)**: \(ByteFormat.delta(slice.delta))")
                 out.append("")
                 out.append("| Segment | Base | This change | Delta |")
                 out.append("|---|---|---|---|")

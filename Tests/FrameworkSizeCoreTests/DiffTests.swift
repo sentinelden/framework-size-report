@@ -1,4 +1,4 @@
-// DiffTests.swift — the verdict logic, which decides whether a build fails.
+// DiffTests.swift: the verdict logic, which decides whether a build fails.
 
 import XCTest
 @testable import FrameworkSizeCore
@@ -42,7 +42,7 @@ final class DiffTests: XCTestCase {
     }
 
     /// Budget is the harder constraint, so it should win the label when both
-    /// are breached — "you are over the ceiling" is more actionable than
+    /// are breached, "you are over the ceiling" is more actionable than
     /// "this change was large".
     func testBudgetTakesPrecedenceOverTolerance() {
         let diff = Differ.compare(before: report(1000), after: report(9000),

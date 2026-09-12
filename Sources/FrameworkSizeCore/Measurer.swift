@@ -1,4 +1,4 @@
-// Measurer.swift — walk a bundle, find its Mach-O, and read segment sizes.
+// Measurer.swift: walk a bundle, find its Mach-O, and read segment sizes.
 //
 // Reads segment sizes out of the load commands rather than calling `size` or
 // `otool`, so the tool is one self-contained binary that runs in a CI
@@ -76,7 +76,7 @@ public enum Measurer {
             }
         }
 
-        // No usable Info.plist — a .framework built without one, or a raw
+        // No usable Info.plist, a .framework built without one, or a raw
         // directory. Fall back to the first Mach-O in the bundle root.
         let contents = (try? fm.contentsOfDirectory(atPath: bundlePath))?.sorted() ?? []
         for entry in contents {

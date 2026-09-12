@@ -1,4 +1,4 @@
-// Measurement.swift — what a framework costs, broken down so the number is
+// Measurement.swift: what a framework costs, broken down so the number is
 // actionable rather than just alarming.
 //
 // "How much will your SDK add to my app?" is the first question every vendor

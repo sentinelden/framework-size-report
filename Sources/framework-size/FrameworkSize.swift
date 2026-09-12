@@ -1,4 +1,4 @@
-// FrameworkSize.swift — CLI entry point.
+// FrameworkSize.swift: CLI entry point.
 //
 // Not named main.swift: that filename is treated as top-level code, which is
 // incompatible with @main.
@@ -7,7 +7,7 @@
 //   framework-size diff base.json head.json --budget 2MB --tolerance 50KB
 //
 // Two commands rather than one so the measurement and the comparison can
-// happen in different CI jobs — which they must, since the base and head
+// happen in different CI jobs, which they must, since the base and head
 // builds are different checkouts.
 
 import ArgumentParser
@@ -90,7 +90,7 @@ struct Measure: ParsableCommand {
         for slice in report.slices {
             out.append("  \(slice.architecture)")
             for segment in slice.segments.sorted(by: { $0.fileSize > $1.fileSize }) {
-                let note = segment.name == "__LINKEDIT" ? "   (excluded — stripped before shipping)" : ""
+                let note = segment.name == "__LINKEDIT" ? "   (excluded, stripped before shipping)" : ""
                 out.append("    \(segment.name.padding(toLength: 14, withPad: " ", startingAt: 0))"
                            + "\(ByteFormat.human(segment.fileSize))\(note)")
             }

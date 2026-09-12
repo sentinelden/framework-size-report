@@ -1,4 +1,4 @@
-// MeasurerTests.swift — parsing and the arithmetic that decides the headline
+// MeasurerTests.swift: parsing and the arithmetic that decides the headline
 // number. The headline number is the whole product, so it gets the most tests.
 
 import XCTest
@@ -62,7 +62,7 @@ final class SizeArithmeticTests: XCTestCase {
     }
 
     /// __LINKEDIT is stripped before shipping, so counting it would inflate
-    /// every number a customer is quoted — badly, on a debug build.
+    /// every number a customer is quoted, badly, on a debug build.
     func testShippedBytesExcludesLinkedit() {
         let s = slice("arm64", text: 1000, data: 500, linkedit: 9000)
         XCTAssertEqual(s.shippedBytes, 1500)
