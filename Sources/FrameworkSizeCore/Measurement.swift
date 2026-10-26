@@ -65,7 +65,7 @@ public struct SizeReport: Sendable, Codable {
     /// Total bytes on disk, including resources and every architecture.
     public let onDiskBytes: UInt64
     public let slices: [SliceSize]
-    /// Non-binary bundle contents: nibs, asset catalogs, localisations.
+    /// Non-binary bundle contents: nibs, asset catalogs, localizations.
     public let resourceBytes: UInt64
     public let generatedAt: String
 

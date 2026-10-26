@@ -43,7 +43,7 @@ public enum Measurer {
         let onDisk = directorySize(path)
         let binarySize = fileSize(at: binaryPath)
         // Everything in the bundle that is not the executable: nibs, asset
-        // catalogs, localisations. A customer pays for these too, and they are
+        // catalogs, localizations. A customer pays for these too, and they are
         // routinely the reason an SDK is larger than its code suggests.
         let resources = onDisk > binarySize ? onDisk - binarySize : 0
 
