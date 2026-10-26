@@ -11,6 +11,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The workflow only reads the repository; the token gets nothing more.
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: macos-14
